@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DATABASE BY ZEN</title>
+    <title>DATA BASE BY ZEN 7777</title>
     <!-- Memuat Tailwind CSS untuk styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Memuat Google Fonts: Poppins -->
@@ -65,6 +65,12 @@
                         <svg class="h-5 w-5 text-slate-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" />
                         </svg>
+                    </button>
+                    <button id="refresh-data-btn" title="Segarkan Data dari Spreadsheet" class="flex-shrink-0 w-12 h-11 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition duration-150 flex items-center justify-center">
+                        <svg id="refresh-icon" class="h-5 w-5 text-slate-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                        </svg>
+                        <svg id="refresh-spinner" class="animate-spin h-5 w-5 text-slate-600 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                     </button>
                 </div>
             </div>
@@ -137,7 +143,7 @@
     <script>
         const SPREADSHEET_ID = '19hSqumZNS1UEylAEnmrlteTuJjVcRgiNhgNJYDxom1M';
         const SHEET_NAME = 'Sheet1';
-        const API_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${SHEET_NAME}`;
+        const API_URL_BASE = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${SHEET_NAME}`;
 
         let allData = [];
         let selectedEmails = new Set();
@@ -175,8 +181,12 @@
         const copySelectedBtn = document.getElementById('copy-selected-btn');
         const copyCountSpan = document.getElementById('copy-count');
         const toast = document.getElementById('toast');
+        
+        const refreshDataBtn = document.getElementById('refresh-data-btn');
+        const refreshIcon = document.getElementById('refresh-icon');
+        const refreshSpinner = document.getElementById('refresh-spinner');
 
-        document.addEventListener('DOMContentLoaded', fetchData);
+        document.addEventListener('DOMContentLoaded', initialLoad);
         searchInput.addEventListener('input', handleSearch);
         
         openModalBtn.addEventListener('click', openBulkModal);
@@ -185,6 +195,7 @@
         bulkSearchBtn.addEventListener('click', handleBulkSearch);
         resetBtn.addEventListener('click', handleReset);
         copySelectedBtn.addEventListener('click', handleCopySelected);
+        refreshDataBtn.addEventListener('click', handleRefreshData);
 
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !bulkModal.classList.contains('hidden')) {
@@ -192,12 +203,17 @@
             }
         });
 
-        async function fetchData() {
+        async function fetchAndParseData() {
+            const API_URL = `${API_URL_BASE}&t=${new Date().getTime()}`;
+            const response = await fetch(API_URL);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const csvText = await response.text();
+            return parseCSV(csvText);
+        }
+
+        async function initialLoad() {
             try {
-                const response = await fetch(API_URL);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const csvText = await response.text();
-                allData = parseCSV(csvText);
+                allData = await fetchAndParseData();
                 if (allData.length > 0) {
                     totalEmailCount.textContent = `Total Akun Ditemukan: ${allData.length}`;
                     displayData(allData);
@@ -212,6 +228,40 @@
             }
         }
         
+        async function handleRefreshData() {
+            refreshIcon.classList.add('hidden');
+            refreshSpinner.classList.remove('hidden');
+            refreshDataBtn.disabled = true;
+
+            try {
+                const newData = await fetchAndParseData();
+                const newCount = newData.length;
+                const oldCount = allData.length;
+                allData = newData;
+
+                searchInput.value = '';
+                displayData(allData);
+                toggleNoResults(false);
+                totalEmailCount.textContent = `Total Akun Ditemukan: ${newCount}`;
+                
+                const addedCount = newCount - oldCount;
+                if (addedCount > 0) {
+                    showToast(`Data diperbarui. ${addedCount} akun baru ditemukan.`);
+                } else if (newCount < oldCount) {
+                    showToast(`Data diperbarui. Beberapa akun telah dihapus.`);
+                } else {
+                    showToast(`Data berhasil diperbarui. Tidak ada perubahan.`);
+                }
+            } catch (err) {
+                console.error("Gagal menyegarkan data:", err);
+                showToast("Gagal menyegarkan data. Coba lagi nanti.");
+            } finally {
+                refreshIcon.classList.remove('hidden');
+                refreshSpinner.classList.add('hidden');
+                refreshDataBtn.disabled = false;
+            }
+        }
+
         function updateCopyButtonUI() {
             const count = selectedEmails.size;
             if (count > 0) {
@@ -222,7 +272,6 @@
             }
         }
 
-        // [FIXED] Menggunakan metode document.execCommand untuk kompatibilitas
         function handleCopySelected() {
             const selectedData = allData.filter(item => selectedEmails.has(item.email));
             const textToCopy = selectedData
@@ -231,7 +280,7 @@
             
             const textarea = document.createElement('textarea');
             textarea.value = textToCopy;
-            textarea.style.position = 'fixed'; // Mencegah scroll
+            textarea.style.position = 'fixed'; 
             textarea.style.left = '-9999px';
             document.body.appendChild(textarea);
             textarea.select();
@@ -254,12 +303,12 @@
             setTimeout(() => {
                 toast.classList.add('opacity-0', '-translate-y-10');
                 setTimeout(() => toast.classList.add('hidden'), 300);
-            }, 2000);
+            }, 2500);
         }
         
         function handleSearch(event) {
             const searchTerm = event.target.value.toLowerCase().trim();
-            const filteredData = allData.filter(item => (item.email || '').toLowerCase().includes(searchTerm));
+            const filteredData = allData.filter(item => (item.email || '').toLowerCase().trim().includes(searchTerm));
             displayData(filteredData);
             toggleNoResults(filteredData.length === 0 && searchTerm);
         }
@@ -267,8 +316,10 @@
         function handleBulkSearch() {
             const text = bulkInput.value.trim();
             if (!text) { handleReset(); return; }
-            const emailsToFind = new Set(text.split(/[\s,;\n]+/).filter(Boolean).map(e => e.toLowerCase()));
-            const filteredData = allData.filter(item => emailsToFind.has((item.email || '').toLowerCase()));
+
+            const emailsToFind = new Set(text.split(/[\s,;\n]+/).filter(Boolean).map(e => e.toLowerCase().trim()));
+            const filteredData = allData.filter(item => emailsToFind.has((item.email || '').toLowerCase().trim()));
+            
             displayData(filteredData);
             toggleNoResults(filteredData.length === 0);
             closeBulkModal();
